@@ -11,9 +11,22 @@ from .baselines import (
     NaivePersistenceModel,
     LinearRegressionBaseline,
 )
+from .tree_models import (
+    XGBoostForecaster,
+    LightGBMForecaster,
+)
+from .lstm_model import (
+    GoldLSTMModule,
+    LSTMForecaster,
+)
 
 __all__ = [
     "BaseForecaster",
     "NaivePersistenceModel",
     "LinearRegressionBaseline",
+    "XGBoostForecaster",
+    "LightGBMForecaster",
+    "GoldLSTMModule",
+    "LSTMForecaster",
 ]
+

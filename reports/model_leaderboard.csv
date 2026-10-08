@@ -1,0 +1,6 @@
+﻿Mô Hình,RMSE ($),MAE ($),MAPE (%),Directional Acc (%),R2 Score,Residual Std ($)
+LightGBM Regressor,60.96,41.85,1.043,50.84,0.9902,60.91
+Naive Persistence (last_price),60.97,41.85,1.043,49.16,0.9902,60.9
+XGBoost Regressor,66.5,49.47,1.229,49.88,0.9884,62.42
+PyTorch LSTM,105.17,79.72,1.959,50.12,0.9709,90.62
+Ridge Regression,185.86,150.45,3.474,49.16,0.9092,114.26
