@@ -12,10 +12,12 @@ Chức năng cốt lõi:
    - R² Score: Hệ số xác định mức độ giải thích phương sai của mô hình.
 
 2. Bảng xếp hạng Leaderboard:
-   - So sánh định lượng công bằng giữa 3 tầng mô hình:
-     * Tầng 1: Baseline (Naive Persistence, Ridge Regression)
-     * Tầng 2: Tree-based (XGBoost Regressor, LightGBM Regressor)
-     * Tầng 3: Deep Learning (PyTorch Multi-variable LSTM)
+   - So sánh định lượng công bằng giữa 5 mô hình:
+     * Baseline: Naive Persistence (Random Walk)
+     * Linear: Hồi quy Ridge (L2 Regularization)
+     * Tree-based: XGBoost Regressor
+     * Tree-based: LightGBM Regressor
+     * Deep Learning: PyTorch Multi-variable LSTM
    - Lưu trữ tự động ra 'reports/model_leaderboard.csv'.
 
 3. Dự báo Đa bước 7 ngày (Recursive Multi-Step Forecasting):
@@ -201,6 +203,27 @@ def generate_leaderboard(
     return df_leaderboard
 
 
+def print_markdown_leaderboard(leaderboard: pd.DataFrame) -> None:
+    """
+    In Bảng xếp hạng Leaderboard dưới dạng Markdown Table chuẩn học thuật.
+    Các cột: Mô Hình | RMSE ($) | MAE ($) | MAPE (%) | Directional Acc (%).
+    """
+    lines = [
+        "| Mô Hình | RMSE ($) | MAE ($) | MAPE (%) | Directional Acc (%) |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for _, r in leaderboard.iterrows():
+        lines.append(
+            f"| {r['Mô Hình']} | {r['RMSE ($)']:.2f} | {r['MAE ($)']:.2f} | "
+            f"{r['MAPE (%)']:.3f} | {r['Directional Acc (%)']:.2f} |"
+        )
+    print("\n" + "=" * 75)
+    print("BẢNG XẾP HẠNG LEADERBOARD (MARKDOWN TABLE)")
+    print("=" * 75)
+    print("\n".join(lines))
+    print("=" * 75 + "\n")
+
+
 # ==============================================================================
 # 3. DỰ BÁO ĐA BƯỚC 7 NGÀY (RECURSIVE MULTI-STEP FORECASTING)
 # ==============================================================================
@@ -304,6 +327,39 @@ def forecast_next_n_days(
     return pd.DataFrame(forecast_records)
 
 
+def forecast_next_7_days(
+    model: BaseForecaster,
+    recent_data: Dict[str, Any],
+) -> List[float]:
+    """
+    Dự báo giá vàng 7 phiên giao dịch tiếp theo.
+
+    Wrapper chuẩn theo Acceptance Criteria của Checkpoint 3.
+
+    Args:
+        model: Mô hình dự báo đã được huấn luyện (BaseForecaster).
+        recent_data: Dict chứa:
+            - "feature_row": pd.Series — dòng đặc trưng phiên gần nhất
+            - "close": float — giá Close phiên gần nhất ($ USD/oz)
+            - "date": pd.Timestamp — ngày của phiên gần nhất
+            - "feature_cols": List[str] — danh sách tên cột đặc trưng X
+            - "residual_std": float (optional) — độ lệch chuẩn phần dư để tính CI 95%
+
+    Returns:
+        List[float] gồm đúng 7 giá vàng dự báo cho 7 phiên tiếp theo ($ USD/oz).
+    """
+    df_forecast = forecast_next_n_days(
+        model=model,
+        latest_feature_row=recent_data["feature_row"],
+        latest_close=recent_data["close"],
+        latest_date=recent_data["date"],
+        feature_cols=recent_data["feature_cols"],
+        n_days=7,
+        residual_std=recent_data.get("residual_std", 25.0),
+    )
+    return df_forecast["Giá Dự Báo ($)"].tolist()
+
+
 # ==============================================================================
 # 4. WORKFLOW CHẠY TOÀN BỘ ĐÁNH GIÁ (PIPELINE EXECUTION)
 # ==============================================================================
@@ -316,7 +372,7 @@ def run_evaluation_pipeline(
     """
     Quy trình Đánh giá Thống nhất hoàn chỉnh:
     1. Tải và phân tách tập dữ liệu featured_gold_data.csv.
-    2. Khởi tạo và huấn luyện 5 mô hình (Naive, Ridge, XGBoost, LightGBM, LSTM).
+    2. Khởi tạo và huấn luyện 4 mô hình (Naive, Linear Regression OLS, XGBoost, LSTM).
     3. Đánh giá trên tập Test độc lập (2024 - nay) và xuất Leaderboard.
     4. Dự báo quỹ đạo 7 ngày cho mô hình có thành tích tốt nhất.
     5. Lưu kết quả kiểm toán vào thư mục reports/.
@@ -366,7 +422,7 @@ def run_evaluation_pipeline(
         print(f"  [Đặc trưng] Số chiều không gian X: {len(feature_cols)} biến kinh tế vĩ mô & chỉ báo kỹ thuật.")
         print("=" * 90)
 
-    # 3. Khởi tạo 5 mô hình đại diện 3 tầng kiến trúc
+    # 3. Khởi tạo 5 mô hình đại diện
     models: Dict[str, BaseForecaster] = {
         "Naive Persistence": NaivePersistenceModel(mode="last_price"),
         "Ridge Regression": LinearRegressionBaseline(model_type="ridge", alpha=10.0, target_type="return"),
@@ -413,6 +469,7 @@ def run_evaluation_pipeline(
         print("=" * 95)
         print(leaderboard.to_string(index=False))
         print("=" * 95)
+        print_markdown_leaderboard(leaderboard)
 
     # 6. Dự báo Đa bước 7 ngày với Mô hình Xuất sắc nhất
     best_model_name = leaderboard.iloc[0]["Mô Hình"]
@@ -423,7 +480,7 @@ def run_evaluation_pipeline(
             best_model = m
             break
     if best_model is None:
-        best_model = models["LightGBM Regressor"]
+        best_model = list(models.values())[0]
 
     latest_row = test_s.iloc[-1]
     latest_close = float(test_df["gold_close"].iloc[-1])
